@@ -35,6 +35,8 @@
 
 #include <QProgressDialog>
 
+#include "gdal.h"
+
 typedef Qgis::VectorExportResult createEmptyLayer_t(
   const QString &uri,
   const QgsFields &fields,
@@ -63,46 +65,63 @@ QgsVectorLayerExporter::QgsVectorLayerExporter( const QString &uri,
 
   QMap<QString, QVariant> modifiedOptions( options );
 
+  QString driverName;
   if ( providerKey == QLatin1String( "ogr" ) &&
-       options.contains( QStringLiteral( "driverName" ) ) &&
-       ( options[ QStringLiteral( "driverName" ) ].toString().compare( QLatin1String( "GPKG" ), Qt::CaseInsensitive ) == 0 ||
-         options[ QStringLiteral( "driverName" ) ].toString().compare( QLatin1String( "SQLite" ), Qt::CaseInsensitive ) == 0 ) )
+       options.contains( QStringLiteral( "driverName" ) ) )
   {
-    if ( geometryType != QgsWkbTypes::NoGeometry )
+    driverName = options[ QStringLiteral( "driverName" ) ].toString();
+  }
+
+#if GDAL_VERSION_NUM >= GDAL_COMPUTE_VERSION(3, 6, 1)
+  if ( driverName.compare( QLatin1String( "GPKG" ), Qt::CaseInsensitive ) == 0 )
+  {
+    // GDAL >= 3.6.1 has efficient GeoPackage spatial index creation, so do
+    // not mess up with how it works
+    mCreateSpatialIndex = false;
+  }
+  else
+#endif
+    if (
+#if GDAL_VERSION_NUM < GDAL_COMPUTE_VERSION(3, 6, 1)
+      driverName.compare( QLatin1String( "GPKG" ), Qt::CaseInsensitive ) == 0 ||
+#endif
+      driverName.compare( QLatin1String( "SQLite" ), Qt::CaseInsensitive ) == 0 )
     {
-      // For GPKG/Spatialite, we explicitly ask not to create a spatial index at
-      // layer creation since this would slow down inserts. Defer its creation
-      // to end of exportLayer() or destruction of this object.
-      QStringList modifiedLayerOptions;
-      if ( options.contains( QStringLiteral( "layerOptions" ) ) )
+      if ( geometryType != QgsWkbTypes::NoGeometry )
       {
-        const QStringList layerOptions = options.value( QStringLiteral( "layerOptions" ) ).toStringList();
-        for ( const QString &layerOption : layerOptions )
+        // For GPKG/Spatialite, we explicitly ask not to create a spatial index at
+        // layer creation since this would slow down inserts. Defer its creation
+        // to end of exportLayer() or destruction of this object.
+        QStringList modifiedLayerOptions;
+        if ( options.contains( QStringLiteral( "layerOptions" ) ) )
         {
-          if ( layerOption.compare( QLatin1String( "SPATIAL_INDEX=YES" ), Qt::CaseInsensitive ) == 0 ||
-               layerOption.compare( QLatin1String( "SPATIAL_INDEX=ON" ), Qt::CaseInsensitive ) == 0 ||
-               layerOption.compare( QLatin1String( "SPATIAL_INDEX=TRUE" ), Qt::CaseInsensitive ) == 0 ||
-               layerOption.compare( QLatin1String( "SPATIAL_INDEX=1" ), Qt::CaseInsensitive ) == 0 )
+          const QStringList layerOptions = options.value( QStringLiteral( "layerOptions" ) ).toStringList();
+          for ( const QString &layerOption : layerOptions )
           {
-            // do nothing
-          }
-          else if ( layerOption.compare( QLatin1String( "SPATIAL_INDEX=NO" ), Qt::CaseInsensitive ) == 0 ||
-                    layerOption.compare( QLatin1String( "SPATIAL_INDEX=OFF" ), Qt::CaseInsensitive ) == 0 ||
-                    layerOption.compare( QLatin1String( "SPATIAL_INDEX=FALSE" ), Qt::CaseInsensitive ) == 0 ||
-                    layerOption.compare( QLatin1String( "SPATIAL_INDEX=0" ), Qt::CaseInsensitive ) == 0 )
-          {
-            mCreateSpatialIndex = false;
-          }
-          else
-          {
-            modifiedLayerOptions << layerOption;
+            if ( layerOption.compare( QLatin1String( "SPATIAL_INDEX=YES" ), Qt::CaseInsensitive ) == 0 ||
+                 layerOption.compare( QLatin1String( "SPATIAL_INDEX=ON" ), Qt::CaseInsensitive ) == 0 ||
+                 layerOption.compare( QLatin1String( "SPATIAL_INDEX=TRUE" ), Qt::CaseInsensitive ) == 0 ||
+                 layerOption.compare( QLatin1String( "SPATIAL_INDEX=1" ), Qt::CaseInsensitive ) == 0 )
+            {
+              // do nothing
+            }
+            else if ( layerOption.compare( QLatin1String( "SPATIAL_INDEX=NO" ), Qt::CaseInsensitive ) == 0 ||
+                      layerOption.compare( QLatin1String( "SPATIAL_INDEX=OFF" ), Qt::CaseInsensitive ) == 0 ||
+                      layerOption.compare( QLatin1String( "SPATIAL_INDEX=FALSE" ), Qt::CaseInsensitive ) == 0 ||
+                      layerOption.compare( QLatin1String( "SPATIAL_INDEX=0" ), Qt::CaseInsensitive ) == 0 )
+            {
+              mCreateSpatialIndex = false;
+            }
+            else
+            {
+              modifiedLayerOptions << layerOption;
+            }
           }
         }
+        modifiedLayerOptions << QStringLiteral( "SPATIAL_INDEX=FALSE" );
+        modifiedOptions[ QStringLiteral( "layerOptions" ) ] = modifiedLayerOptions;
       }
-      modifiedLayerOptions << QStringLiteral( "SPATIAL_INDEX=FALSE" );
-      modifiedOptions[ QStringLiteral( "layerOptions" ) ] = modifiedLayerOptions;
     }
-  }
 
   // create an empty layer
   QString errMsg;

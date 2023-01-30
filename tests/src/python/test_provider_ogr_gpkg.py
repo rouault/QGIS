@@ -2247,12 +2247,13 @@ class TestPyQgsOGRProviderGpkg(unittest.TestCase):
         self.assertFalse(exporter.errorCode(),
                          'unexpected export error {}: {}'.format(exporter.errorCode(), exporter.errorMessage()))
 
-        # Check that at that point the rtree is *not* created
-        ds = ogr.Open(tmpfile)
-        sql_lyr = ds.ExecuteSQL("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'gpkg_extensions'")
-        assert sql_lyr.GetNextFeature() is None
-        ds.ReleaseResultSet(sql_lyr)
-        del ds
+        if int(gdal.VersionInfo('VERSION_NUM')) < GDAL_COMPUTE_VERSION(3, 6, 1):
+            # Check that at that point the rtree is *not* created
+            ds = ogr.Open(tmpfile)
+            sql_lyr = ds.ExecuteSQL("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'gpkg_extensions'")
+            assert sql_lyr.GetNextFeature() is None
+            ds.ReleaseResultSet(sql_lyr)
+            del ds
 
         del exporter
 
