@@ -21,6 +21,7 @@
 
 #include "qgis_core.h"
 #include "qgis_sip.h"
+#include "qgsabstractdatabaseproviderconnection.h"
 #include "qgsfields.h"
 #include "qgsfeedback.h"
 #include "qgsogrutils.h"
@@ -555,6 +556,25 @@ class CORE_EXPORT QgsVectorFileWriter : public QgsFeatureSink
          * \since QGIS 3.34
          */
         bool includeConstraints = false;
+
+        /**
+         * Set to TRUE to transfer field domains to the exported vector file.
+         *
+         * Support for field domains depends on the output file format.
+         *
+         * \since QGIS 3.36
+         */
+        bool setFieldDomains = true;
+
+        /**
+         * Source database provider connection, for field domains.
+         *
+         * Ownership is not transferred and callers must ensure that the lifetime of srcDatabaseProviderConn
+         * exceeds the lifetime of the QgsVectorFileWriter object.
+         *
+         * \since QGIS 3.36
+         */
+        const QgsAbstractDatabaseProviderConnection *srcDatabaseProviderConn = nullptr;
     };
 
 #ifndef SIP_RUN
@@ -636,6 +656,8 @@ class CORE_EXPORT QgsVectorFileWriter : public QgsFeatureSink
      * \param sinkFlags feature sink flags (added in QGIS 3.10.3)
      * \param fieldNameSource source for field names (since QGIS 3.18)
      * \param includeConstraints set to TRUE to copy field constraints to the destination layer (since QGIS 3.34)
+     * \param setFieldDomains set to TRUE to copy field domains (since QGIS 3.36)
+     * \param srcDatabaseProviderConn source database provider connection, for field domains (since QGIS 3.36)
      * \note not available in Python bindings
      * \deprecated Use create() instead.
      */
@@ -656,7 +678,9 @@ class CORE_EXPORT QgsVectorFileWriter : public QgsFeatureSink
                                            const QgsCoordinateTransformContext &transformContext = QgsCoordinateTransformContext(),
                                            QgsFeatureSink::SinkFlags sinkFlags = QgsFeatureSink::SinkFlags(),
                                            FieldNameSource fieldNameSource = Original,
-                                           bool includeConstraints = false
+                                           bool includeConstraints = false,
+                                           bool setFieldDomains = true,
+                                           const QgsAbstractDatabaseProviderConnection *srcDatabaseProviderConn = nullptr
                                          ) SIP_SKIP;
 
     //! QgsVectorFileWriter cannot be copied.
@@ -992,6 +1016,9 @@ class CORE_EXPORT QgsVectorFileWriter : public QgsFeatureSink
     //! Whether to transfer field constraints to output
     bool mIncludeConstraints = false;
 
+    //! Whether to set field domains to output
+    bool mSetFieldDomains = true;
+
   private:
 #ifdef SIP_RUN
     QgsVectorFileWriter( const QgsVectorFileWriter &rh );
@@ -1021,6 +1048,7 @@ class CORE_EXPORT QgsVectorFileWriter : public QgsFeatureSink
       QgsGeometry filterRectGeometry;
       std::unique_ptr< QgsGeometryEngine  > filterRectEngine;
       QVariantMap providerUriParams;
+      std::unique_ptr< QgsAbstractDatabaseProviderConnection > srcDatabaseProviderConn;
     };
 
     /**
@@ -1072,7 +1100,8 @@ class CORE_EXPORT QgsVectorFileWriter : public QgsFeatureSink
                const QString &layerName,
                QgsVectorFileWriter::ActionOnExistingFile action, QString *newLayer, QgsFeatureSink::SinkFlags sinkFlags,
                const QgsCoordinateTransformContext &transformContext,
-               FieldNameSource fieldNameSource );
+               FieldNameSource fieldNameSource,
+               const QgsAbstractDatabaseProviderConnection *srcDatabaseProviderConn );
     void resetMap( const QgsAttributeList &attributes );
 
     std::unique_ptr< QgsFeatureRenderer > mRenderer;
